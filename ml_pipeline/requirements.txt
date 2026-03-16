@@ -1,0 +1,8 @@
+pandas
+yfinance
+influxdb-client
+requests
+python-dotenv
+mlflow
+scikit-learn
+statsmodels
