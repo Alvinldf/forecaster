@@ -1,0 +1,22 @@
+# Use a lightweight Python base image
+FROM python:3.11-slim
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy the requirements file first for layer caching
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the pipeline code
+# This includes data_ingestion.py, train.py, config.py, evaluate.py, and scheduler.py
+COPY . .
+
+# Ensure .env is accessible from the root if needed, but usually 
+# docker-compose will inject it via env_file.
+# We'll assume the scheduler runs from /app and finds config.py.
+
+# Set the entrypoint to our scheduler script
+CMD ["python", "scheduler.py"]

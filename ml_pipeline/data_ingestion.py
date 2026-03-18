@@ -30,15 +30,49 @@ def init_influxdb_buckets():
             
     client.close()
 
+def get_last_timestamp(ticker):
+    """Queries InfluxDB for the most recent timestamp of a ticker."""
+    client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
+    query_api = client.query_api()
+
+    # Flux query to get the last timestamp for the 'close' field of the ticker
+    query = f'''
+        from(bucket: "{INFLUX_BUCKET}")
+        |> range(start: -inf)
+        |> filter(fn: (r) => r._measurement == "market_price")
+        |> filter(fn: (r) => r.ticker == "{ticker}")
+        |> filter(fn: (r) => r._field == "close")
+        |> last()
+    '''
+    
+    try:
+        result = query_api.query(org=INFLUX_ORG, query=query)
+        client.close()
+        for table in result:
+            for record in table.records:
+                return record.get_time()
+    except Exception as e:
+        print(f"Error querying last timestamp for {ticker}: {e}")
+        client.close()
+        
+    return None
+
 import time
 
 def fetch_bcrp_historical():
     """Fetches ALL historical USD/PEN data from BCRP in 4-year chunks."""
     print(f"Fetching ALL historical USD/PEN data from BCRP (Series: {BCRP_SERIES_USDPEN})...")
     
+    # Determine the start year based on the latest data in InfluxDB
+    last_dt = get_last_timestamp("USDPEN=X")
+    start_year_from_db = 1997
+    if last_dt:
+        start_year_from_db = last_dt.year
+        print(f" -> Found existing USDPEN data up to {last_dt}. Starting from year {start_year_from_db}.")
+    
     # BCRP daily data for this series starts in 1997.
     # We step through the years in blocks of 4.
-    chunk_starts = list(range(1997, 2027, 4))
+    chunk_starts = list(range(start_year_from_db, 2027, 4))
     
     for i in range(len(chunk_starts)):
         start_year = chunk_starts[i]
@@ -94,14 +128,24 @@ def fetch_bcrp_historical():
             print(f"    Error fetching chunk {start_year}-{end_year}: {e}")
 def fetch_yfinance_historical(ticker_symbol):
     """Fetches 10 years of daily historical data from Yahoo Finance."""
-    print(f"Fetching historical data for {ticker_symbol} from Yahoo Finance...")
+    print(f"Fetching data for {ticker_symbol} from Yahoo Finance...")
     
     ticker = yf.Ticker(ticker_symbol)
-    # 10 years of daily data gives ML models plenty of training context
-    df = ticker.history(period="max", interval="1d")
+    
+    # Check for incremental load
+    last_dt = get_last_timestamp(ticker_symbol)
+    if last_dt:
+        # Move forward by one day to avoid duplicating the last record
+        start_date = (last_dt + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        print(f" -> Found existing {ticker_symbol} data up to {last_dt}. Loading from {start_date}...")
+        df = ticker.history(start=start_date, interval="1d")
+    else:
+        # 10 years of daily data gives ML models plenty of training context
+        print(f" -> No existing data for {ticker_symbol}. Loading 'max' period...")
+        df = ticker.history(period="max", interval="1d")
     
     if df.empty:
-        print(f"No data found for {ticker_symbol}.")
+        print(f"No new data found for {ticker_symbol}.")
         return
         
     df.dropna(inplace=True)
@@ -139,17 +183,20 @@ def write_to_influx(df, measurement_name):
     )
     client.close()
 
-if __name__ == "__main__":
-    print("--- Starting Historical Data Ingestion Pipeline ---")
+def run_ingestion():
+    print("--- Starting Data Ingestion Pipeline ---")
     
     # 1. Ensure databases exist
     init_influxdb_buckets()
     
-    # 2. Ingest 10 years of Macro FX data
+    # 2. Ingest USD/PEN data
     fetch_bcrp_historical()
     
-    # 3. Ingest 10 years of Commodity data
+    # 3. Ingest Commodity data
     for ticker in TICKERS:
         fetch_yfinance_historical(ticker)
         
     print("--- Pipeline Execution Complete ---")
+
+if __name__ == "__main__":
+    run_ingestion()

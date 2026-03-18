@@ -98,7 +98,7 @@ def train_random_forest(df):
         
         print(f"Random Forest Logged! RMSE: {rmse:.4f}")
 
-if __name__ == "__main__":
+def run_training():
     # 1. Get the data
     copper_data = fetch_training_data(ticker="HG=F")
     
@@ -109,3 +109,6 @@ if __name__ == "__main__":
         train_arima(copper_data)
         train_random_forest(copper_data)
         print("All models successfully trained and logged to MLflow!")
+
+if __name__ == "__main__":
+    run_training()

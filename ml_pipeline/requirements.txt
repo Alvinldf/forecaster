@@ -6,3 +6,4 @@ python-dotenv
 mlflow
 scikit-learn
 statsmodels
+schedule

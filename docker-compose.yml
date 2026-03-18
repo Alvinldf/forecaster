@@ -41,6 +41,21 @@ services:
     volumes:
       - ./mlflow-data:/home/mlflow
 
+  # 4. DAILY AUTOMATION ENGINE
+  scheduler:
+    build:
+      context: ./ml_pipeline
+      dockerfile: Dockerfile.scheduler
+    container_name: forecaster-scheduler
+    env_file: .env
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      - influxdb
+      - mlflow
+    restart: unless-stopped
+
 # PERSISTENT STORAGE LOCKERS
 volumes:
   influxdb-data:
