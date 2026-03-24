@@ -5,3 +5,4 @@ python-dotenv
 influxdb-client
 mlflow
 pandas
+fastapi
