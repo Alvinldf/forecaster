@@ -1,6 +1,7 @@
 import pandas as pd
 import yfinance as yf
 import requests
+import time
 from datetime import datetime
 from influxdb_client import InfluxDBClient, BucketRetentionRules
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -57,7 +58,6 @@ def get_last_timestamp(ticker):
         
     return None
 
-import time
 
 def fetch_bcrp_historical():
     """Fetches ALL historical USD/PEN data from BCRP in 4-year chunks."""
@@ -169,18 +169,26 @@ def fetch_yfinance_historical(ticker_symbol):
     print(f"Success! {len(df)} records ingested for {ticker_symbol}.")
 
 def write_to_influx(df, measurement_name):
-    """Helper function to write DataFrames to InfluxDB."""
-    # Added timeout=30000 to prevent large datasets from crashing the connection
+    """Helper function to write DataFrames to InfluxDB in smaller chunks."""
     client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG, timeout=30000)
     write_api = client.write_api(write_options=SYNCHRONOUS)
     
-    write_api.write(
-        bucket=INFLUX_BUCKET, 
-        org=INFLUX_ORG, 
-        record=df,
-        data_frame_measurement_name=measurement_name,
-        data_frame_tag_columns=["ticker", "provider"]
-    )
+    # Break the massive DataFrame into VERY safe chunks of 200 rows
+    chunk_size = 200
+    for i in range(0, len(df), chunk_size):
+        df_chunk = df.iloc[i:i + chunk_size]
+        
+        write_api.write(
+            bucket=INFLUX_BUCKET, 
+            org=INFLUX_ORG, 
+            record=df_chunk,
+            data_frame_measurement_name=measurement_name,
+            data_frame_tag_columns=["ticker", "provider"]
+        )
+        # Give Railway 2 FULL seconds to flush RAM to the disk
+        print(f"      -> Wrote {len(df_chunk)} rows. Pausing to clear RAM...")
+        time.sleep(2) 
+        
     client.close()
 
 def run_ingestion():
@@ -195,6 +203,8 @@ def run_ingestion():
     # 3. Ingest Commodity data
     for ticker in TICKERS:
         fetch_yfinance_historical(ticker)
+        # Spoon-feed the database: wait 2 seconds between tickers
+        # time.sleep(2)
         
     print("--- Pipeline Execution Complete ---")
 

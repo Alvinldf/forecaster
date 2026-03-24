@@ -1,3 +1,118 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-background-primary: #0a0c12;
+  --color-copper-orange: #f97316;
+  --color-market-blue: #3b82f6;
+  --color-prediction-purple: #8b5cf6;
+  
+  --font-geist-sans: var(--font-geist-sans);
+}
+
+:root {
+  --background: #0a0c12;
+  --foreground: #f8fafc;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
+  background-image: 
+    radial-gradient(circle at 0% 0%, rgba(249, 115, 22, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
+  background-attachment: fixed;
+  overflow-x: hidden;
+}
+
+/* Custom Glass Card - Using standard properties for better v4 compatibility */
+.glass-card {
+  background-color: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.05);
+  transform: translateY(-4px) scale(1.01);
+}
+
+.stat-label {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #64748b; /* slate-500 */
+  margin-bottom: 0.25rem;
+}
+
+.stat-value {
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  color: white;
+}
+
+.glow-orange {
+  filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.4));
+}
+
+.glow-blue {
+  filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.4));
+}
+
+.badge-pulse {
+  position: relative;
+  display: flex;
+  height: 0.5rem;
+  width: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.badge-pulse span:first-child {
+  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  position: absolute;
+  display: inline-flex;
+  height: 100%;
+  width: 100%;
+  border-radius: 9999px;
+  background-color: #4ade80; /* green-400 */
+  opacity: 0.75;
+}
+
+.badge-pulse span:last-child {
+  position: relative;
+  display: inline-flex;
+  border-radius: 9999px;
+  height: 0.5rem;
+  width: 0.5rem;
+  background-color: #22c55e; /* green-500 */
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  border: 3px solid #0a0c12;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

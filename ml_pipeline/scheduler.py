@@ -2,8 +2,7 @@ import schedule
 import time
 import logging
 from data_ingestion import run_ingestion
-from train import run_training
-from evaluate import get_latest_rmse
+from predict import run_prediction
 
 # Configure logging
 logging.basicConfig(
@@ -12,14 +11,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ForecasterScheduler")
 
-# Hardcoded threshold for retraining
-# If RMSE exceeds this, we trigger a new training run
-RMSE_THRESHOLD = 50.0  
-
 def daily_job():
     logger.info("--- Starting Daily Scheduled Job ---")
     
-    # 1. Run Data Ingestion (Incremental)
+    # 1. Run Data Ingestion (Fetch latest daily closes from yfinance/BCRP)
     try:
         logger.info("Running incremental data ingestion...")
         run_ingestion()
@@ -27,22 +22,12 @@ def daily_job():
         logger.error(f"Data ingestion failed: {e}")
         return
 
-    # 2. Evaluate Model
+    # 2. Run Prediction (Multi-Task Inference Engine Pipeline)
     try:
-        logger.info("Evaluating current model performance...")
-        latest_rmse = get_latest_rmse()
-        
-        if latest_rmse is None:
-            logger.warning("No previous RMSE found. Triggering initial training...")
-            run_training()
-        elif latest_rmse > RMSE_THRESHOLD:
-            logger.info(f"RMSE ({latest_rmse:.4f}) exceeds threshold ({RMSE_THRESHOLD}). Triggering retraining...")
-            run_training()
-        else:
-            logger.info(f"Model is healthy (RMSE: {latest_rmse:.4f} <= {RMSE_THRESHOLD}). Skipping retraining.")
-            
+        logger.info("Generating Procurement Strategy forecasts for the Next Period...")
+        run_prediction()
     except Exception as e:
-        logger.error(f"Evaluation or training failed: {e}")
+        logger.error(f"Prediction inference failed: {e}")
 
     logger.info("--- Daily Scheduled Job Complete ---")
 
@@ -50,11 +35,11 @@ def daily_job():
 schedule.every().day.at("21:00").do(daily_job)
 
 if __name__ == "__main__":
-    logger.info("Forecaster Scheduler Service Started.")
+    logger.info("🚀 Forecaster Scheduler Service Started.")
     logger.info("Scheduled to run daily at 21:00 UTC.")
     
-    # Run once on startup to ensure we have data/model if the database is fresh
-    # This is a common pattern for "cold start" scenarios
+    # Run once on startup to ensure we have fresh data/signals instantly
+    logger.info("Running initial cold-start execution...")
     daily_job()
     
     while True:

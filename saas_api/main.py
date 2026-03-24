@@ -15,7 +15,8 @@ load_dotenv(dotenv_path=ENV_PATH)
 INFLUX_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
 INFLUX_TOKEN = os.getenv("INFLUXDB_TOKEN")
 INFLUX_ORG = os.getenv("INFLUXDB_ORG")
-INFLUX_BUCKET = os.getenv("INFLUXDB_BUCKET")
+INFLUX_BUCKET = os.getenv("INFLUXDB_BUCKET", "MarketData")
+INFLUX_BUCKET_FORECAST = os.getenv("INFLUXDB_BUCKET_FORECAST", "ForecastData")
 
 # --- 2. Initialize FastAPI ---
 app = FastAPI(
@@ -107,45 +108,49 @@ mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 @app.get("/api/forecast/{ticker}")
 def get_price_forecast(ticker: str):
     """
-    Downloads the latest model from MLflow, gets recent data from InfluxDB,
-    and generates a 30-day forecast.
+    Fetches the latest pre-computed CNN-LSTM forecast signal from InfluxDB.
+    This architecture prevents the web server from hanging during heavy ML inference.
     """
     try:
-        # 1. Load the "Latest" version of your ARIMA model from MLflow
-        # We use 'models:/' followed by the name you used in train.py
-        model_name = "ARIMA_Baseline" 
-        model_uri = f"models:/Copper_SaaS_Final/latest" 
-        
-        # For this tracer bullet, we can also point directly to the run ID
-        # if you haven't registered the model yet. Let's use the simplest method:
-        model = mlflow.statsmodels.load_model(model_uri)
-        
-        # 2. Get the latest data from InfluxDB to provide context
         client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
         query_api = client.query_api()
         
-        # We need at least enough data to satisfy the ARIMA lags (e.g., last 30 days)
+        # Query the dedicated Forecast bucket para T+1
+        # Filtramos 'ANCHOR' y buscamos desde el instante actual hacia adelante
+        # Re-agrupamos todas las sub-tablas (Influx crea tablas por cada tag distinto de Señal/Urgencia) 
+        # antes de ordenar para que el T+1 global gane.
         query = f'''
-            from(bucket: "{INFLUX_BUCKET}")
-            |> range(start: -30d)
-            |> filter(fn: (r) => r._measurement == "market_price")
+            from(bucket: "{INFLUX_BUCKET_FORECAST}")
+            |> range(start: now(), stop: 14d)
+            |> filter(fn: (r) => r._measurement == "forecast_signal")
             |> filter(fn: (r) => r.ticker == "{ticker}")
-            |> filter(fn: (r) => r._field == "close")
+            |> filter(fn: (r) => r.is_backtest == "False")
+            |> filter(fn: (r) => r.signal != "ANCHOR")
+            |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+            |> group()
+            |> sort(columns: ["_time"], desc: false)
+            |> limit(n: 1)
         '''
+        
         result = query_api.query(org=INFLUX_ORG, query=query)
         client.close()
 
-        # 3. Generate the 30-day forecast
-        # ARIMA models in statsmodels have a .forecast() method
-        forecast_steps = 30
-        prediction = model.forecast(steps=forecast_steps)
+        if not result or len(result) == 0 or len(result[0].records) == 0:
+            raise HTTPException(status_code=404, detail=f"No recent forecasts found for {ticker}")
+
+        record = result[0].records[0]
         
         return {
             "ticker": ticker,
-            "forecast_days": forecast_steps,
-            "predictions": prediction.tolist(),
-            "model_source": model_uri
+            "forecast_date": record.get_time().isoformat(),
+            "signal": record.values.get("signal", "UNKNOWN"),
+            "urgency": record.values.get("urgency", "UNKNOWN"),
+            "expected_price": record.values.get("expected_price"),
+            "expected_return_pct": record.values.get("expected_return_pct"),
+            "upward_probability": record.values.get("upward_probability"),
+            "probability_uncertainty": record.values.get("probability_uncertainty"),
+            "model_type": record.values.get("model_type", "CNN-LSTM_MultiTask")
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Inference Data Fetch Error: {str(e)}")
